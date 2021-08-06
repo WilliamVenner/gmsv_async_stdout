@@ -1,0 +1,17 @@
+[package]
+name = "gmsv_async_stdout"
+version = "0.1.0"
+authors = ["William Venner <william@venner.io>"]
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+sigscan = { path = "sigscan-rs/sigscan" }
+libc = "0.2.98"
+lazy_static = "1.4.0"
+libloading = "0.7.0"
+detour = "0.8.1"
+chrono = "0.4.19"
+ctor = "0.1.20"
