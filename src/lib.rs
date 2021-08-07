@@ -18,66 +18,51 @@ thread_local! {
 				writeln!(f, "====== gmsv_async_stdout {} ======", chrono::Local::now()).ok();
 				f.flush().ok();
 
+				macro_rules! write_data {
+					($data:ident, $len:ident) => {
+						let data: [u8; MAXPRINTMSG] = unsafe { std::mem::transmute($data) };
+						f.write_all(&data[0..$len as usize]).ok();
+					}
+				}
+
 				loop {
 					match rx.try_recv() {
 						Ok((data, len)) => {
-							let data: [u8; MAXPRINTMSG] = unsafe { std::mem::transmute(data) };
-							f.write_all(&data[0..len as usize]).ok();
+							write_data!(data, len);
 						},
 						Err(std::sync::mpsc::TryRecvError::Empty) => {
 							f.flush().ok();
 							if let Ok((data, len)) = rx.recv() {
-								let data: [u8; MAXPRINTMSG] = unsafe { std::mem::transmute(data) };
-								f.write_all(&data[0..len as usize]).ok();
+								write_data!(data, len);
 							}
 						},
 						Err(std::sync::mpsc::TryRecvError::Disconnected) => break
 					}
 				}
 
-				writeln!(f, "====== SERVER SHUTDOWN ======").ok();
+				writeln!(f, "====== SERVER SHUTTING DOWN {} ======", chrono::Local::now()).ok();
 				f.flush().ok();
 			})
 		)))
 	};
 }
 
-#[allow(non_snake_case)]
-unsafe fn Con_DebugLog(fmt: *const std::os::raw::c_char, mut args: std::ffi::VaList) -> bool {
-	extern "C" {
-		pub fn vsnprintf(
-			__s: *mut ::std::os::raw::c_char,
-			__maxlen: usize,
-			__format: *const ::std::os::raw::c_char,
-			__arg: *mut std::ffi::VaList,
-		) -> ::std::os::raw::c_int;
-	}
-
-	LOG_CHAN.with(|ref_cell| {
-		if let Some((chan, _)) = ref_cell.borrow().as_ref() {
-			let mut data = [0i8; MAXPRINTMSG];
-			let len = vsnprintf(data.as_mut_ptr(), std::mem::size_of::<[i8; MAXPRINTMSG]>(), fmt, &mut args as *mut _);
-			chan.send((data, len)).is_err()
-		} else {
-			true
-		}
-	})
-}
-
 #[no_mangle]
 pub unsafe extern "C-unwind" fn gmod13_open(_lua: *mut std::ffi::c_void) -> i32 {
-	lazy_static::initialize(&hook::ENGINE_DLL);
+	hook::enable();
 	0
 }
 
 #[no_mangle]
 pub unsafe extern "C-unwind" fn gmod13_close(_lua: *mut std::ffi::c_void) -> i32 {
-	hook::ENGINE_DLL.Con_DebugLog_Hook.disable().ok();
+	hook::disable().ok();
+
 	LOG_CHAN.with(|ref_cell| {
 		if let Some((sender, thread)) = ref_cell.borrow_mut().take() {
 			drop(sender);
 			thread.join().ok();
 		}
 	});
+
 	0
 }
