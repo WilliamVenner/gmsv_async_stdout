@@ -2,7 +2,7 @@
 
 This is a Garry's Mod server module that moves `-condebug` file I/O out of the main thread, which should significantly improve performance for noisy servers.
 
-**NOTE: This module does nothing if `-condebug` is not enabled in your server startup parameters**
+**NOTE: This module does nothing if `-condebug` is not enabled in your server startup parameters. If your host doesn't add `-condebug` but still provides a web console (e.g. Pterodactyl panel hosts), you DON'T NEED this module.**
 
 ## What?
 
