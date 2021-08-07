@@ -64,30 +64,20 @@ unsafe fn Con_DebugLog(fmt: *const std::os::raw::c_char, mut args: std::ffi::VaL
 	})
 }
 
-// For those who know what they're doing, you can use this module as a SRCDS server plugin too, thanks to the silliness below.
-
-#[ctor::ctor]
-fn dll_open() {
-	lazy_static::initialize(&hook::SERVER_DLL);
+#[no_mangle]
+pub unsafe extern "C-unwind" fn gmod13_open(_lua: *mut std::ffi::c_void) -> i32 {
+	lazy_static::initialize(&hook::ENGINE_DLL);
+	0
 }
 
-#[ctor::dtor]
-fn dll_close() {
-	unsafe { hook::SERVER_DLL.Con_DebugLog_Hook.disable() }.ok();
+#[no_mangle]
+pub unsafe extern "C-unwind" fn gmod13_close(_lua: *mut std::ffi::c_void) -> i32 {
+	hook::ENGINE_DLL.Con_DebugLog_Hook.disable().ok();
 	LOG_CHAN.with(|ref_cell| {
 		if let Some((sender, thread)) = ref_cell.borrow_mut().take() {
 			drop(sender);
 			thread.join().ok();
 		}
 	});
-}
-
-#[no_mangle]
-pub unsafe extern "C-unwind" fn gmod13_open(_lua: *mut std::ffi::c_void) -> i32 {
-	0
-}
-
-#[no_mangle]
-pub unsafe extern "C-unwind" fn gmod13_close(_lua: *mut std::ffi::c_void) -> i32 {
 	0
 }
