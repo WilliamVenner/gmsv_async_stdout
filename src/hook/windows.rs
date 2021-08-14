@@ -23,18 +23,13 @@ extern "C" fn Con_DebugLog_Trampoline(fmt: *const std::os::raw::c_char, mut __ar
 
 	unsafe {
 		let mut args = __args.as_va_list();
-		let call_trampoline = LOG_CHAN.with(|ref_cell| {
-			if let Some((chan, _)) = ref_cell.borrow().as_ref() {
+		LOG_CHAN.with(|cell| {
+			if let Some((chan, _)) = (&*cell.get()).as_ref() {
 				let mut data = [0i8; MAXPRINTMSG];
 				let len = vsnprintf(data.as_mut_ptr(), std::mem::size_of::<[i8; MAXPRINTMSG]>(), fmt, &mut args as *mut _);
-				chan.send((data, len)).is_err()
-			} else {
-				true
+				chan.send((data, len)).ok();
 			}
 		});
-		if call_trampoline {
-			HOOKS.Con_DebugLog_Hook.call(fmt, __args);
-		}
 	}
 }
 
@@ -67,12 +62,17 @@ impl Hooks {
 			}
 		}.expect("Failed to find Con_DebugLog");
 
+		if let Err(error) = crate::sink::pipe() {
+			eprintln!("Failed to redirect stdout to /dev/null");
+			eprintln!("{:#?}", error);
+		}
+
 		Hooks {
 			Con_DebugLog_Hook: {
 				let detour = detour::GenericDetour::new(Con_DebugLog, Con_DebugLog_Trampoline).expect("Failed to hook Con_DebugLog");
 				detour.enable().expect("Failed to enable Con_DebugLog hook");
 				assert!(detour.is_enabled(), "Failed to enable Con_DebugLog hook [assertion failed]");
-				println!("[async-stdout] Con_DebugLog Hooked! Make sure -condebug is on!");
+				println!("[async-stdout] Con_DebugLog Hooked!");
 				detour
 			},
 		}

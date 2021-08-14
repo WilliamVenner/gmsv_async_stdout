@@ -12,11 +12,12 @@ lazy_static::lazy_static! {
 }
 
 unsafe fn CTextConsoleUnix_Print_FirstHook_Impl(this: *mut std::ffi::c_void, pszMsg: *mut std::os::raw::c_char) {
-	// In this first hook, we turn off m_bConDebug
-	let m_bConDebug = this.add(8225) as *mut bool;
-	*m_bConDebug = false;
-
 	(&mut *HOOKS.CTextConsoleUnix_Print_Hook.get()).disable().expect("Failed to disable primary CTextConsoleUnix_Print hook");
+
+	if let Err(error) = crate::sink::pipe() {
+		eprintln!("Failed to redirect stdout to /dev/null");
+		eprintln!("{:#?}", error);
+	}
 
 	let le_detour = {
 		let detour = detour::GenericDetour::new(HOOKS.CTextConsoleUnix_Print, CTextConsoleUnix_Print_Hook).expect("Failed to hook CTextConsoleUnix_Print");
@@ -28,12 +29,12 @@ unsafe fn CTextConsoleUnix_Print_FirstHook_Impl(this: *mut std::ffi::c_void, psz
 	// Replace the hook with the one that doesn't touch m_bConDebug
 	HOOKS.CTextConsoleUnix_Print_Hook.get().write(le_detour);
 
-	CTextConsoleUnix_Print_Hook_Impl(this, pszMsg)
+	CTextConsoleUnix_Print_Hook_Impl(this, pszMsg);
 }
 
 unsafe fn CTextConsoleUnix_Print_Hook_Impl(this: *mut std::ffi::c_void, pszMsg: *mut std::os::raw::c_char) {
-	LOG_CHAN.with(|ref_cell| {
-		if let Some((chan, _)) = ref_cell.borrow().as_ref() {
+	LOG_CHAN.with(|cell| {
+		if let Some((chan, _)) = (&*cell.get()).as_ref() {
 			let len = libc::strlen(pszMsg);
 			if len > 0 {
 				let mut data = [0i8; MAXPRINTMSG];
@@ -49,19 +50,16 @@ type CTextConsoleUnix_Print = extern "fastcall" fn(this: *mut std::ffi::c_void, 
 #[cfg(target_pointer_width = "64")]
 extern "fastcall" fn CTextConsoleUnix_Print_FirstHook(this: *mut std::ffi::c_void, pszMsg: *mut std::os::raw::c_char, unknown: i32) {
 	unsafe {
-		CTextConsoleUnix_Print_FirstHook_Impl(this, pszMsg);
-
 		let m_bConDebug = this.add(8225) as *mut bool;
 		*m_bConDebug = false;
 
-		(&*HOOKS.CTextConsoleUnix_Print_Hook.get()).call(this, pszMsg, unknown);
+		CTextConsoleUnix_Print_FirstHook_Impl(this, pszMsg);
 	}
 }
 #[cfg(target_pointer_width = "64")]
 extern "fastcall" fn CTextConsoleUnix_Print_Hook(this: *mut std::ffi::c_void, pszMsg: *mut std::os::raw::c_char, unknown: i32) {
 	unsafe {
 		CTextConsoleUnix_Print_Hook_Impl(this, pszMsg);
-		(&*HOOKS.CTextConsoleUnix_Print_Hook.get()).call(this, pszMsg, unknown);
 	}
 }
 
@@ -70,19 +68,16 @@ type CTextConsoleUnix_Print = extern "cdecl" fn(this: *mut std::ffi::c_void, psz
 #[cfg(target_pointer_width = "32")]
 extern "cdecl" fn CTextConsoleUnix_Print_FirstHook(this: *mut std::ffi::c_void, pszMsg: *mut std::os::raw::c_char) {
 	unsafe {
-		CTextConsoleUnix_Print_FirstHook_Impl(this, pszMsg);
-
 		let m_bConDebug = this.add(5) as *mut bool;
 		*m_bConDebug = false;
 
-		(&*HOOKS.CTextConsoleUnix_Print_Hook.get()).call(this, pszMsg);
+		CTextConsoleUnix_Print_FirstHook_Impl(this, pszMsg);
 	}
 }
 #[cfg(target_pointer_width = "32")]
 extern "cdecl" fn CTextConsoleUnix_Print_Hook(this: *mut std::ffi::c_void, pszMsg: *mut std::os::raw::c_char) {
 	unsafe {
 		CTextConsoleUnix_Print_Hook_Impl(this, pszMsg);
-		(&*HOOKS.CTextConsoleUnix_Print_Hook.get()).call(this, pszMsg);
 	}
 }
 
@@ -120,7 +115,7 @@ impl Hooks {
 				let detour = detour::GenericDetour::new(CTextConsoleUnix_Print, CTextConsoleUnix_Print_FirstHook).expect("Failed to hook CTextConsoleUnix_Print");
 				detour.enable().expect("Failed to enable CTextConsoleUnix_Print hook");
 				assert!(detour.is_enabled(), "Failed to enable CTextConsoleUnix_Print hook [assertion failed]");
-				println!("[async-stdout] CTextConsoleUnix_Print Hooked! Make sure -condebug is on!");
+				println!("[async-stdout] CTextConsoleUnix_Print Hooked!");
 				detour
 			}),
 		}
